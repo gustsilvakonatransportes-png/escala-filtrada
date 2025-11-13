@@ -140,13 +140,8 @@ if uploaded_file:
 
             st.success(f"✅ {len(df_out)} blocos encontrados!")
 
-            # ✅ Cabeçalhos em negrito no Streamlit
-            st.markdown(
-                df_out.style.set_table_styles(
-                    [{'selector': 'th', 'props': [('font-weight', 'bold'), ('text-align', 'center')]}]
-                ).to_html(),
-                unsafe_allow_html=True
-            )
+            # ✅ Mostra tabela normal com filtro
+            st.dataframe(df_out)
 
             # ✅ Exporta com cabeçalhos em negrito no Excel
             buf = BytesIO()
@@ -157,7 +152,7 @@ if uploaded_file:
                 df_out.to_excel(writer, index=False, sheet_name="Escala Filtrada")
                 ws = writer.sheets["Escala Filtrada"]
 
-                # Formata cabeçalhos
+                # Deixa cabeçalhos em negrito e centralizados
                 bold_font = Font(bold=True)
                 center_align = Alignment(horizontal="center", vertical="center")
                 for cell in ws[1]:
