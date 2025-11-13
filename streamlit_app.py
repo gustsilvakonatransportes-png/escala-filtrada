@@ -18,6 +18,7 @@ turno = st.selectbox("Escolha o turno:", ["Noturno", "Diurno"])
 uploaded_file = st.file_uploader("Enviar arquivo .xlsx (escala)", type=["xlsx"])
 
 # 🔍 Padrões (regex)
+# Agora aceita frota começando com T ou V
 FROTA_RE = re.compile(r"\b[TV]\d{2,4}\b", re.IGNORECASE)
 PLACA_RE = re.compile(r"[A-Z0-9]{5,8}", re.IGNORECASE)
 ROTA_RE = re.compile(r"\b\d{4,5}\b")
@@ -30,6 +31,7 @@ def cell_text(cell):
     return str(cell).strip() if cell else ""
 
 def find_frota_lines(ws):
+    """Identifica as linhas onde há frota."""
     positions = []
     max_row = ws.max_row
     max_col = ws.max_column
@@ -47,12 +49,15 @@ def find_frota_lines(ws):
     return positions
 
 def extract_blocks_by_frota(ws, frota_positions):
+    """Cria blocos com base nas posições de frotas encontradas."""
     blocks = []
     max_row = ws.max_row
     frota_positions = sorted(frota_positions, key=lambda x: (x[0], x[1]))
+
     if not frota_positions:
         blocks.append((1, max_row, 1, ws.max_column))
         return blocks
+
     for i, pos in enumerate(frota_positions):
         start_row = pos[0]
         end_row = frota_positions[i + 1][0] - 1 if i + 1 < len(frota_positions) else max_row
@@ -60,7 +65,10 @@ def extract_blocks_by_frota(ws, frota_positions):
     return blocks
 
 def extract_from_block(ws, start_row, end_row, start_col, end_col):
+    """Extrai dados dentro de um bloco."""
     frota = placa = rota = motorista = ajud1 = ajud2 = largada = ""
+
+    # Frota e placa
     for c in range(start_col, end_col + 1):
         v = cell_text(ws.cell(row=start_row, column=c).value)
         if FROTA_RE.search(v):
@@ -72,6 +80,7 @@ def extract_from_block(ws, start_row, end_row, start_col, end_col):
                     break
             break
 
+    # Rota
     for r in range(start_row, end_row + 1):
         for c in range(start_col, end_col + 1):
             v = cell_text(ws.cell(row=r, column=c).value)
@@ -81,11 +90,13 @@ def extract_from_block(ws, start_row, end_row, start_col, end_col):
         if rota:
             break
 
+    # Motorista, ajudantes e largada
     for r in range(start_row, end_row + 1):
         for c in range(start_col, end_col + 1):
             v = cell_text(ws.cell(row=r, column=c).value)
             if not v:
                 continue
+
             if MOTORISTA_KEY.search(v):
                 motorista = cell_text(ws.cell(row=r + 1, column=c).value) or motorista
             if AJ1_KEY.search(v):
@@ -110,18 +121,23 @@ def extract_from_block(ws, start_row, end_row, start_col, end_col):
     }
 
 def parse_workbook_bytes(file_bytes):
+    """Faz a leitura e parsing do arquivo XLSX."""
     wb = load_workbook(filename=BytesIO(file_bytes), data_only=True)
     ws = wb.active
+
     frota_positions = find_frota_lines(ws)
     blocks = extract_blocks_by_frota(ws, frota_positions)
+
     rows = []
     for b in blocks:
         data = extract_from_block(ws, *b)
         if any(data.values()):
             rows.append(data)
+
     df = pd.DataFrame(rows, columns=["Frota", "Placa", "Rota", "Motorista", "Ajudante 1", "Ajudante 2", "Largada"])
     return df
 
+# Execução principal
 if uploaded_file:
     try:
         file_bytes = uploaded_file.read()
@@ -134,21 +150,9 @@ if uploaded_file:
             df_out = df_out[["Frota", "Placa", "Rota", "Motorista", "Ajudante 1", "Ajudante 2", "Turno", "Largada"]]
 
             st.success(f"✅ {len(df_out)} blocos encontrados!")
+            st.dataframe(df_out)
 
-            # Cabeçalho em negrito com estilo garantido
-            st.markdown("""
-                <style>
-                [data-testid="stTable"] thead tr th div p {
-                    font-weight: 900 !important;
-                    color: white !important;
-                }
-                </style>
-            """, unsafe_allow_html=True)
-
-            # Usar data_editor (modo leitura) — permite estilo
-            st.data_editor(df_out, use_container_width=True, disabled=True)
-
-            # Download do Excel
+            # Exporta o resultado
             buf = BytesIO()
             data_hoje = datetime.now().strftime("%d-%m-%Y")
             nome_arquivo = f"ESCALA_FILTRADA_{data_hoje}.xlsx"
