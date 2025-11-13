@@ -7,18 +7,42 @@ import re
 from openpyxl import load_workbook
 from openpyxl.styles import Font, Alignment
 
-# Configuração da página
+# ---------------- CONFIGURAÇÃO DA PÁGINA ----------------
 st.set_page_config(page_title="ESCALA FILTRADA", layout="wide")
 st.title("🚛 Escala Filtrada — Extrator automático de blocos - José Cristiano")
 st.markdown("Envie a planilha com os blocos; escolha o turno; baixe a planilha padronizada.")
 
-# Escolha de turno
+# 🌙 CSS para deixar o cabeçalho da tabela escuro
+st.markdown("""
+    <style>
+    /* Cabeçalho da tabela */
+    thead tr th {
+        background-color: #1e1e1e !important;
+        color: white !important;
+        font-weight: bold !important;
+        text-align: center !important;
+    }
+    /* Linhas alternadas */
+    tbody tr:nth-child(odd) {
+        background-color: #2a2a2a !important;
+    }
+    tbody tr:nth-child(even) {
+        background-color: #1c1c1c !important;
+    }
+    /* Texto da tabela */
+    tbody td {
+        color: #e0e0e0 !important;
+    }
+    </style>
+""", unsafe_allow_html=True)
+
+# ---------------- ESCOLHA DO TURNO ----------------
 turno = st.selectbox("Escolha o turno:", ["Noturno", "Diurno"])
 
-# Upload do arquivo Excel
+# ---------------- UPLOAD DO ARQUIVO ----------------
 uploaded_file = st.file_uploader("Enviar arquivo .xlsx (escala)", type=["xlsx"])
 
-# 🔍 Padrões (regex)
+# ---------------- REGEX PADRÕES ----------------
 FROTA_RE = re.compile(r"\b[TV]\d{2,4}\b", re.IGNORECASE)
 PLACA_RE = re.compile(r"[A-Z0-9]{5,8}", re.IGNORECASE)
 ROTA_RE = re.compile(r"\b\d{4,5}\b")
@@ -27,6 +51,7 @@ MOTORISTA_KEY = re.compile(r"motorista", re.IGNORECASE)
 AJ1_KEY = re.compile(r"ajudante\s*1|aj1", re.IGNORECASE)
 AJ2_KEY = re.compile(r"ajudante\s*2|aj2", re.IGNORECASE)
 
+# ---------------- FUNÇÕES ----------------
 def cell_text(cell):
     return str(cell).strip() if cell else ""
 
@@ -51,11 +76,9 @@ def extract_blocks_by_frota(ws, frota_positions):
     blocks = []
     max_row = ws.max_row
     frota_positions = sorted(frota_positions, key=lambda x: (x[0], x[1]))
-
     if not frota_positions:
         blocks.append((1, max_row, 1, ws.max_column))
         return blocks
-
     for i, pos in enumerate(frota_positions):
         start_row = pos[0]
         end_row = frota_positions[i + 1][0] - 1 if i + 1 < len(frota_positions) else max_row
@@ -64,7 +87,6 @@ def extract_blocks_by_frota(ws, frota_positions):
 
 def extract_from_block(ws, start_row, end_row, start_col, end_col):
     frota = placa = rota = motorista = ajud1 = ajud2 = largada = ""
-
     for c in range(start_col, end_col + 1):
         v = cell_text(ws.cell(row=start_row, column=c).value)
         if FROTA_RE.search(v):
@@ -75,7 +97,6 @@ def extract_from_block(ws, start_row, end_row, start_col, end_col):
                     placa = txt
                     break
             break
-
     for r in range(start_row, end_row + 1):
         for c in range(start_col, end_col + 1):
             v = cell_text(ws.cell(row=r, column=c).value)
@@ -84,7 +105,6 @@ def extract_from_block(ws, start_row, end_row, start_col, end_col):
                 break
         if rota:
             break
-
     for r in range(start_row, end_row + 1):
         for c in range(start_col, end_col + 1):
             v = cell_text(ws.cell(row=r, column=c).value)
@@ -102,7 +122,6 @@ def extract_from_block(ws, start_row, end_row, start_col, end_col):
                     largada = mtime.group(0).replace("h", ":")
                 else:
                     largada = cell_text(ws.cell(row=r + 1, column=c).value) or largada
-
     return {
         "Frota": frota,
         "Placa": placa,
@@ -126,12 +145,11 @@ def parse_workbook_bytes(file_bytes):
     df = pd.DataFrame(rows, columns=["Frota", "Placa", "Rota", "Motorista", "Ajudante 1", "Ajudante 2", "Largada"])
     return df
 
-# Execução principal
+# ---------------- EXECUÇÃO PRINCIPAL ----------------
 if uploaded_file:
     try:
         file_bytes = uploaded_file.read()
         df_out = parse_workbook_bytes(file_bytes)
-
         if df_out.empty:
             st.error("Não foi possível detectar blocos. Verifique o arquivo.")
         else:
@@ -140,10 +158,10 @@ if uploaded_file:
 
             st.success(f"✅ {len(df_out)} blocos encontrados!")
 
-            # ✅ Mostra tabela normal com filtro
+            # ✅ Mostra tabela com estilo e filtro
             st.dataframe(df_out)
 
-            # ✅ Exporta com cabeçalhos em negrito no Excel
+            # ✅ Excel exportado com cabeçalho em negrito
             buf = BytesIO()
             data_hoje = datetime.now().strftime("%d-%m-%Y")
             nome_arquivo = f"ESCALA_FILTRADA_{data_hoje}.xlsx"
@@ -151,8 +169,6 @@ if uploaded_file:
             with pd.ExcelWriter(buf, engine="openpyxl") as writer:
                 df_out.to_excel(writer, index=False, sheet_name="Escala Filtrada")
                 ws = writer.sheets["Escala Filtrada"]
-
-                # Deixa cabeçalhos em negrito e centralizados
                 bold_font = Font(bold=True)
                 center_align = Alignment(horizontal="center", vertical="center")
                 for cell in ws[1]:
@@ -165,6 +181,5 @@ if uploaded_file:
                 file_name=nome_arquivo,
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
             )
-
     except Exception as e:
         st.error(f"❌ Erro ao processar a planilha: {e}")
